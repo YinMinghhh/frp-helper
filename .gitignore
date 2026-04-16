@@ -1,0 +1,15 @@
+# Build artifacts
+/bin/
+
+# Local runtime state
+/.frp-helper-dev/
+
+# Real or private manifests distributed outside the public repo
+/access.json
+/secrets/
+/dist/private/
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.swo
