@@ -171,6 +171,83 @@ func TestStartAuthFailureMapsError(t *testing.T) {
 	}
 }
 
+func TestRunAutoDiscoversManifestFromWorkingDirectory(t *testing.T) {
+	app, stdout, _ := newTestApp(t)
+	installStubFRPC(t, app)
+	app.backgroundServe = app.Serve
+
+	manifestDir := t.TempDir()
+	manifestPath := filepath.Join(manifestDir, "access.json")
+	data, err := json.MarshalIndent(manifestFixture("frps.example.com", []model.Service{
+		{Name: "ssh-1", ServerName: "ssh_1", SecretKey: "secret-1", BindPort: 6400, ProtocolHint: "ssh", AccessUser: "bob"},
+	}), "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent: %v", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(manifestPath, data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	app.getwd = func() (string, error) { return manifestDir, nil }
+
+	if err := app.Run(context.Background(), RunOptions{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), "Applied 1 service(s).") {
+		t.Fatalf("expected run to auto-apply manifest, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "frpc is running in the background.") {
+		t.Fatalf("expected background start output, got %q", stdout.String())
+	}
+
+	waitFor(t, 5*time.Second, func() bool {
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:6400", 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		return false
+	})
+
+	if err := app.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+}
+
+func TestPackageCreatesBundle(t *testing.T) {
+	app, stdout, _ := newTestApp(t)
+
+	executablePath := filepath.Join(t.TempDir(), executableNameForCurrentPlatform())
+	if err := os.WriteFile(executablePath, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile executable: %v", err)
+	}
+	app.executable = func() (string, error) { return executablePath, nil }
+
+	manifestPath := writeManifest(t, manifestFixture("frps.example.com", []model.Service{
+		{Name: "ssh-1", ServerName: "ssh_1", SecretKey: "secret-1", BindPort: 6500, ProtocolHint: "ssh"},
+	}))
+	outputDir := filepath.Join(t.TempDir(), "bundle")
+	if err := app.Package(context.Background(), PackageOptions{
+		ManifestPath:  manifestPath,
+		OutputDir:     outputDir,
+		EnableStartup: true,
+	}); err != nil {
+		t.Fatalf("Package: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(outputDir, "access.json")); err != nil {
+		t.Fatalf("expected access.json in bundle: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "README-bundle.txt")); err != nil {
+		t.Fatalf("expected bundle readme: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Bundle created:") {
+		t.Fatalf("expected package output, got %q", stdout.String())
+	}
+}
+
 func newTestApp(t *testing.T) (*App, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 
@@ -278,4 +355,11 @@ func waitFor(t *testing.T, timeout time.Duration, fn func() bool) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("condition not met before timeout")
+}
+
+func executableNameForCurrentPlatform() string {
+	if runtime.GOOS == "windows" {
+		return "frp-helper.exe"
+	}
+	return "frp-helper"
 }

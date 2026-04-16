@@ -1,5 +1,6 @@
 # Build artifacts
 /bin/
+/dist/
 
 # Local runtime state
 /.frp-helper-dev/
