@@ -1,0 +1,23 @@
+{
+  "serverAddr": "frps.example.com",
+  "serverPort": 7000,
+  "authToken": "YOUR_AUTH_TOKEN",
+  "user": "ops",
+  "services": [
+    {
+      "name": "ubuntu ssh",
+      "serverName": "ubuntu_ssh",
+      "secretKey": "YOUR_STCP_SECRET",
+      "bindPort": 6000,
+      "protocolHint": "ssh",
+      "accessUser": "alice"
+    },
+    {
+      "name": "internal dashboard",
+      "serverName": "dashboard_http",
+      "secretKey": "YOUR_HTTP_SECRET",
+      "bindPort": 6001,
+      "protocolHint": "http"
+    }
+  ]
+}
